@@ -32,6 +32,20 @@ export interface ServiceItem {
   desc: string;
 }
 
+export interface FounderData {
+  name: string;
+  role: string;
+}
+
+export interface AiPuliSectionData {
+  leadIn: string;
+  title: string;
+  description1: string;
+  description2: string;
+  cta: string;
+  link: string;
+}
+
 export interface ContentData {
   brand: string;
   hero: HeroData;
@@ -40,4 +54,6 @@ export interface ContentData {
   about: AboutItem[];
   testimonials: TestimonialItem[];
   contact: ContactData;
+  founder: FounderData;
+  aiPuli: AiPuliSectionData;
 }

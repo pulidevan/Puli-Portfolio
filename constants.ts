@@ -8,11 +8,23 @@ export const CONTENT: ContentData = {
     ending: "CURIOUS MINDS",
     subtext: "EST. 2025 /// AI ENGINEERING"
   },
+  founder: {
+    name: "Pulidevan Prabakaran",
+    role: "Founder - ai.puli.dev"
+  },
   stats: [
     { num: "1500+", label: "people trained" },
     { num: "100+", label: "AI Projects" },
     { num: "12+", label: "Clients served" }
   ],
+  aiPuli: {
+    leadIn: "People asked me what, which, why, and how, so I built a tool for that.",
+    title: "INTELLIGENCE,\nARCHITECTURALIZED.",
+    description1: "The era of the blank page is over. We don't just generate; we engineer. From a single thought to a deployed empire, AI Puli acts as the connective tissue between your vision and the world's most powerful tools.",
+    description2: "Chaos, organized. Complexity, simplified.\nStop guessing. Start building.",
+    cta: "Initialize System",
+    link: "https://ai.puli.dev"
+  },
   services: [
     { 
       id: "01", 

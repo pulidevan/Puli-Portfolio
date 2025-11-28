@@ -6,7 +6,7 @@ import ScrollReveal from './components/ScrollReveal';
 import ServicesList from './components/ServicesList';
 import EnquiryForm from './components/EnquiryForm';
 import { AudioProvider, useAudio } from './components/AudioProvider';
-import { ArrowUpRight, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUpRight, Volume2, VolumeX, Terminal } from 'lucide-react';
 
 const MuteToggle = () => {
   const { isMuted, toggleMute } = useAudio();
@@ -25,7 +25,7 @@ const AppContent: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [showAgent, setShowAgent] = useState(false);
-  const { playSwipe } = useAudio();
+  const { playSwipe, playHover, playClick } = useAudio();
 
   useEffect(() => {
     const handleScrollAndResize = () => {
@@ -125,9 +125,17 @@ const AppContent: React.FC = () => {
             </h1>
           </ScrollReveal>
 
-           <div className="mt-6 pl-1 font-mono-custom font-normal text-[10px] md:text-xs text-gray-400 opacity-80 uppercase tracking-[0.25em]">
-            {CONTENT.hero.subtext}
-          </div>
+           <div className="mt-6 pl-1 flex flex-col gap-6">
+             <div className="font-mono-custom font-normal text-[10px] md:text-xs text-gray-400 opacity-80 uppercase tracking-[0.25em]">
+              {CONTENT.hero.subtext}
+             </div>
+             
+             {/* Founder Tag */}
+             <div className="border-l border-white/50 pl-4 py-1">
+               <h3 className="font-headline font-bold text-lg md:text-xl uppercase tracking-wide text-white">{CONTENT.founder.name}</h3>
+               <p className="font-mono-custom text-[10px] md:text-xs text-gray-300 uppercase tracking-widest mt-1">{CONTENT.founder.role}</p>
+             </div>
+           </div>
         </div>
       </header>
 
@@ -150,6 +158,65 @@ const AppContent: React.FC = () => {
               </ScrollReveal>
             ))}
           </div>
+        </section>
+
+        {/* AI Puli Promo Section */}
+        <section className="px-6 md:px-12">
+          {/* Pre-title Lead-in Text */}
+          <ScrollReveal className="mb-12">
+            <p className="font-display text-xl md:text-3xl text-gray-300 leading-tight max-w-4xl opacity-90">
+              {CONTENT.aiPuli.leadIn}
+            </p>
+          </ScrollReveal>
+
+          <ScrollReveal>
+             <div className="relative border border-white/10 bg-neutral-900/10 p-8 md:p-24 overflow-hidden group">
+                {/* Decorative Elements */}
+                <div className="absolute inset-0 bg-noise opacity-10 pointer-events-none"></div>
+                <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/5 rounded-full blur-3xl group-hover:bg-white/10 transition-colors duration-700"></div>
+                
+                <div className="relative z-10 flex flex-col lg:flex-row gap-16 items-start justify-between">
+                   <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-6 opacity-50">
+                        <Terminal className="w-5 h-5" />
+                        <span className="font-mono-custom text-xs uppercase tracking-widest">System Architecture</span>
+                      </div>
+                      <h2 className="font-headline text-5xl md:text-8xl uppercase leading-[0.85] whitespace-pre-line text-white mix-blend-luminosity">
+                        {CONTENT.aiPuli.title}
+                      </h2>
+                   </div>
+                   
+                   <div className="flex-1 max-w-xl flex flex-col gap-10">
+                      <p className="font-sans text-lg md:text-xl text-gray-400 leading-relaxed font-light">
+                        {CONTENT.aiPuli.description1}
+                      </p>
+                      
+                      <p className="font-mono-custom text-sm md:text-base text-white uppercase tracking-wider leading-relaxed border-l-2 border-white pl-6 py-2">
+                        {CONTENT.aiPuli.description2}
+                      </p>
+                      
+                      <div className="pt-4">
+                        <a 
+                          href={CONTENT.aiPuli.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-block cursor-hover"
+                          onMouseEnter={playHover}
+                          onMouseDown={playClick}
+                        >
+                          <div className="group/btn relative overflow-hidden bg-white text-black px-10 py-5 font-mono-custom text-sm uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                            <span className="relative z-10 flex items-center gap-2">
+                              {CONTENT.aiPuli.cta}
+                              <ArrowUpRight className="w-4 h-4 transform group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />
+                            </span>
+                            <div className="absolute bottom-0 left-0 w-full h-[3px] bg-black transform scale-x-0 group-hover/btn:scale-x-100 transition-transform duration-300 origin-left ease-expo"></div>
+                          </div>
+                        </a>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          </ScrollReveal>
         </section>
 
         {/* Services Section - Interactive List */}
