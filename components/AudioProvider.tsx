@@ -4,16 +4,20 @@ interface AudioContextType {
   playHover: () => void;
   playClick: () => void;
   playSwipe: () => void;
+  playKeystroke: () => void;
   isMuted: boolean;
   toggleMute: () => void;
+  setMuted: (muted: boolean) => void;
 }
 
 const AudioContext = createContext<AudioContextType>({
   playHover: () => {},
   playClick: () => {},
   playSwipe: () => {},
+  playKeystroke: () => {},
   isMuted: true,
   toggleMute: () => {},
+  setMuted: () => {},
 });
 
 export const useAudio = () => useContext(AudioContext);
@@ -22,9 +26,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isMuted, setIsMuted] = useState(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
-  
-  // Ambient Nodes
-  const ambientNodesRef = useRef<any[]>([]);
   
   // Scroll Audio Nodes
   const scrollNoiseNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -55,15 +56,22 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
-    const handleInteraction = () => {
+    const handleInteraction = (e: Event) => {
+      // Check if the interaction source is explicitly marked to NOT unmute global audio
+      const target = e.target as Element;
+      if (target.closest && target.closest('.no-global-unmute')) {
+          initAudio(); // Initialize context but don't unmute
+          return; 
+      }
+
       initAudio();
       if (audioCtxRef.current?.state === 'suspended') {
         audioCtxRef.current.resume();
       }
-      if (!isMuted) {
-        startAmbient();
-        startScrollNoise();
-      }
+      
+      // Auto-unmute on first interaction to enable SFX
+      setIsMuted(false);
+
       window.removeEventListener('click', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
       window.removeEventListener('touchstart', handleInteraction);
@@ -94,13 +102,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       master.gain.cancelScheduledValues(now);
       master.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
       setTimeout(() => {
-        stopAmbient();
         stopScrollNoise();
       }, 500);
     } else {
       // Fade in
       if (ctx.state === 'suspended') ctx.resume();
-      startAmbient();
       startScrollNoise();
       master.gain.cancelScheduledValues(now);
       master.gain.setValueAtTime(0.001, now);
@@ -117,7 +123,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         lastScrollYRef.current = currentScrollY;
 
         // Add delta to velocity, apply drag/inertia
-        // This makes the sound trail off naturally instead of cutting out
         scrollVelocityRef.current = scrollVelocityRef.current * 0.92 + delta * 0.08;
 
         // Map scroll velocity to volume and frequency
@@ -201,62 +206,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const startAmbient = () => {
-    if (!audioCtxRef.current || !masterGainRef.current || ambientNodesRef.current.length > 0) return;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
-
-    // A soothing, airy pad chord (Fmaj7 add9) for a futuristic/hopeful feel
-    // F3, A3, C4, E4, G4
-    const freqs = [174.61, 220.00, 261.63, 329.63, 392.00]; 
-    
-    freqs.forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
-      osc.frequency.value = f;
-      osc.detune.value = Math.random() * 6 - 3; // Detune for width
-
-      // LFO for slow movement (breathing)
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.05 + (Math.random() * 0.05); // Very slow
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.03; // Modulation depth
-      
-      lfo.connect(lfoGain);
-      lfoGain.connect(gain.gain);
-      
-      gain.gain.value = 0.015; // Base volume (very quiet)
-
-      // Filter to remove harshness
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 800;
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(masterGainRef.current!);
-      
-      osc.start(now);
-      lfo.start(now);
-      
-      ambientNodesRef.current.push({ osc, gain, lfo, lfoGain, filter });
-    });
-  };
-
-  const stopAmbient = () => {
-    ambientNodesRef.current.forEach(node => {
-      try {
-        node.osc.stop();
-        node.lfo.stop();
-        node.osc.disconnect();
-        node.lfo.disconnect();
-      } catch(e) {}
-    });
-    ambientNodesRef.current = [];
-  };
-
   // --- Interaction SFX (Awwwards Style) ---
 
   const playHover = () => {
@@ -264,7 +213,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const ctx = audioCtxRef.current;
     const t = ctx.currentTime;
     
-    // "Breath" / Glassy Swell (Not a harsh ping)
+    // "Breath" / Glassy Swell
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
@@ -272,7 +221,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     osc.frequency.setValueAtTime(600, t);
     osc.frequency.linearRampToValueAtTime(800, t + 0.3);
     
-    // Soft attack, long release
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.04, t + 0.05); 
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
@@ -349,8 +297,39 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     source.stop(t + 0.4);
   };
 
+  const playKeystroke = () => {
+    if (isMuted || !audioCtxRef.current || !masterGainRef.current) return;
+    const ctx = audioCtxRef.current;
+    const t = ctx.currentTime;
+    
+    // Subtle "Tick" for typing
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(2000, t);
+    osc.frequency.exponentialRampToValueAtTime(1000, t + 0.05);
+    
+    gain.gain.setValueAtTime(0.03, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+    osc.connect(gain);
+    gain.connect(masterGainRef.current);
+    
+    osc.start(t);
+    osc.stop(t + 0.05);
+  };
+
   return (
-    <AudioContext.Provider value={{ playHover, playClick, playSwipe, isMuted, toggleMute: () => setIsMuted(!isMuted) }}>
+    <AudioContext.Provider value={{ 
+        playHover, 
+        playClick, 
+        playSwipe, 
+        playKeystroke, 
+        isMuted, 
+        toggleMute: () => setIsMuted(!isMuted),
+        setMuted: (muted: boolean) => setIsMuted(muted)
+    }}>
       {children}
     </AudioContext.Provider>
   );

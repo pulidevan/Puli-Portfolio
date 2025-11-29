@@ -1,33 +1,32 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useRef } from 'react';
 import { CONTENT } from './constants';
 import CustomCursor from './components/CustomCursor';
 import HeroScene from './components/HeroScene';
 import ScrollReveal from './components/ScrollReveal';
 import ServicesList from './components/ServicesList';
 import EnquiryForm from './components/EnquiryForm';
+import Preloader from './components/Preloader';
 import { AudioProvider, useAudio } from './components/AudioProvider';
-import { ArrowUpRight, Volume2, VolumeX, Terminal } from 'lucide-react';
-
-const MuteToggle = () => {
-  const { isMuted, toggleMute } = useAudio();
-  return (
-    <button 
-      onClick={toggleMute}
-      className="fixed top-6 right-6 md:top-10 md:right-12 z-[100] mix-blend-difference text-white hover:opacity-70 transition-opacity"
-      aria-label="Toggle Sound"
-    >
-      {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6 animate-pulse" />}
-    </button>
-  );
-};
+import { ArrowUpRight, Terminal, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 const AppContent: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [showAgent, setShowAgent] = useState(false);
-  const { playSwipe, playHover, playClick } = useAudio();
+  
+  // Video Player State
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isPlayerPaused, setIsPlayerPaused] = useState(false);
+  const [isPlayerMuted, setIsPlayerMuted] = useState(false);
+
+  const { playSwipe, playHover, playClick, setMuted } = useAudio();
 
   useEffect(() => {
+    // Only start specific logic after loading is done to save resources
+    if (isLoading) return;
+
     const handleScrollAndResize = () => {
       const scrollY = window.scrollY;
       setIsScrolled(scrollY > 50);
@@ -40,8 +39,9 @@ const AppContent: React.FC = () => {
 
       if (isDesktop) {
         setShowAgent(true);
-      } else {
-        setShowAgent(scrollY > scrollThreshold);
+      } else if (scrollY > scrollThreshold) {
+        // Latch to true: Once shown, keep it mounted.
+        setShowAgent(true);
       }
     };
     
@@ -57,7 +57,6 @@ const AppContent: React.FC = () => {
     window.addEventListener('resize', handleScrollAndResize);
     window.addEventListener('mousemove', handleMouseMove);
     
-    // Initial check
     handleScrollAndResize();
 
     return () => {
@@ -65,15 +64,84 @@ const AppContent: React.FC = () => {
       window.removeEventListener('resize', handleScrollAndResize);
       window.removeEventListener('mousemove', handleMouseMove);
     };
-  }, []);
+  }, [isLoading]);
+
+  // Listen for Video End event from Vimeo (via postMessage)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+       try {
+           if (typeof event.data !== 'string') return;
+           const data = JSON.parse(event.data);
+           
+           // Vimeo 'ready' event -> register 'finish' listener and Force Unmute
+           if (data.event === 'ready') {
+                const iframe = document.querySelector('iframe[src*="vimeo"]');
+                if (iframe && (iframe as HTMLIFrameElement).contentWindow) {
+                    const win = (iframe as HTMLIFrameElement).contentWindow;
+                    
+                    // Register Finish Listener
+                    win?.postMessage(JSON.stringify({
+                        method: 'addEventListener',
+                        value: 'finish'
+                    }), '*');
+
+                    // FORCE UNMUTE: Set volume to 100%
+                    win?.postMessage(JSON.stringify({
+                        method: 'setVolume',
+                        value: 1
+                    }), '*');
+                    setIsPlayerMuted(false);
+                }
+           }
+
+           // Vimeo 'finish' event
+           if (data.event === 'finish') {
+               setIsVideoPlaying(false);
+               setIsPlayerPaused(false);
+           }
+       } catch (e) {
+           // Ignore non-JSON messages
+       }
+    };
+    
+    if (isVideoPlaying) {
+        window.addEventListener('message', handleMessage);
+    }
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isVideoPlaying]);
 
   // Use a variable for the custom element to avoid global type pollution issues
   const ElevenLabsConvai = 'elevenlabs-convai' as any;
 
+  // Video Controls
+  const toggleVideoPlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const iframe = document.querySelector('iframe[src*="vimeo"]');
+    if (iframe && (iframe as HTMLIFrameElement).contentWindow) {
+        const method = isPlayerPaused ? 'play' : 'pause';
+        (iframe as HTMLIFrameElement).contentWindow?.postMessage(JSON.stringify({ method }), '*');
+        setIsPlayerPaused(!isPlayerPaused);
+    }
+  };
+
+  const toggleVideoMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const iframe = document.querySelector('iframe[src*="vimeo"]');
+    if (iframe && (iframe as HTMLIFrameElement).contentWindow) {
+        const volume = isPlayerMuted ? 1 : 0;
+        (iframe as HTMLIFrameElement).contentWindow?.postMessage(JSON.stringify({ 
+            method: 'setVolume', 
+            value: volume 
+        }), '*');
+        setIsPlayerMuted(!isPlayerMuted);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full text-white selection:bg-white selection:text-black overflow-x-hidden cursor-none">
+      {isLoading && <Preloader onComplete={() => setIsLoading(false)} />}
+      
       <CustomCursor />
-      <MuteToggle />
 
       {/* Hero Section */}
       <header className="relative w-full h-screen overflow-hidden bg-black">
@@ -160,62 +228,93 @@ const AppContent: React.FC = () => {
           </div>
         </section>
 
-        {/* AI Puli Promo Section */}
-        <section className="px-6 md:px-12">
-          {/* Pre-title Lead-in Text */}
-          <ScrollReveal className="mb-12">
-            <p className="font-display text-xl md:text-3xl text-gray-300 leading-tight max-w-4xl opacity-90">
-              {CONTENT.aiPuli.leadIn}
-            </p>
-          </ScrollReveal>
-
-          <ScrollReveal>
-             <div className="relative border border-white/10 bg-neutral-900/10 p-8 md:p-24 overflow-hidden group">
-                {/* Decorative Elements */}
-                <div className="absolute inset-0 bg-noise opacity-10 pointer-events-none"></div>
-                <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/5 rounded-full blur-3xl group-hover:bg-white/10 transition-colors duration-700"></div>
+        {/* Video Embed Section - Centered & Architectural */}
+        <section className="px-6 md:px-12 py-12 flex justify-center">
+          <ScrollReveal className="w-full max-w-5xl">
+            {/* Background Grid Frame */}
+            <div className="relative w-full p-2 md:p-8 border border-white/10 bg-neutral-900/10 backdrop-blur-sm">
                 
-                <div className="relative z-10 flex flex-col lg:flex-row gap-16 items-start justify-between">
-                   <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-6 opacity-50">
-                        <Terminal className="w-5 h-5" />
-                        <span className="font-mono-custom text-xs uppercase tracking-widest">System Architecture</span>
-                      </div>
-                      <h2 className="font-headline text-5xl md:text-8xl uppercase leading-[0.85] whitespace-pre-line text-white mix-blend-luminosity">
-                        {CONTENT.aiPuli.title}
-                      </h2>
-                   </div>
-                   
-                   <div className="flex-1 max-w-xl flex flex-col gap-10">
-                      <p className="font-sans text-lg md:text-xl text-gray-400 leading-relaxed font-light">
-                        {CONTENT.aiPuli.description1}
-                      </p>
+                {/* Decorative Corners */}
+                <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/50"></div>
+                <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/50"></div>
+                <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/50"></div>
+                <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/50"></div>
+
+                <div className="relative w-full aspect-[4/3] bg-black overflow-hidden shadow-2xl group border border-white/5 no-global-unmute">
+                  {/* Global Noise Overlay */}
+                  <div className="absolute inset-0 bg-noise opacity-10 pointer-events-none z-0"></div>
+                  
+                  {!isVideoPlaying ? (
+                    <div 
+                      className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer z-10 group/thumbnail"
+                      onClick={() => {
+                        setIsVideoPlaying(true);
+                        setMuted(true); // Silence global background audio when video starts
+                      }}
+                      onMouseEnter={playHover}
+                    >
+                      {/* Thumbnail Image */}
+                      <img 
+                        src="https://i.ibb.co/k2CMc14f/1128-1.png" 
+                        alt="Video Thumbnail"
+                        className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover/thumbnail:scale-105 transition-transform duration-700 ease-out"
+                      />
+
+                       {/* Dark Aesthetic Overlay */}
+                       <div className="absolute inset-0 bg-black/40 group-hover/thumbnail:bg-black/20 transition-colors duration-500"></div>
+                       
+                       {/* Label */}
+                       <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-3 z-20">
+                          <Terminal className="w-4 h-4 md:w-5 md:h-5 text-white drop-shadow-lg" />
+                          <span className="font-mono-custom text--[10px] md:text-xs text-white uppercase tracking-widest drop-shadow-md">System Architecture</span>
+                       </div>
+
+                       {/* Small Play Button */}
+                       <div 
+                         className="relative z-20 group/play w-16 h-16 md:w-20 md:h-20 border border-white/20 bg-black/20 backdrop-blur-md rounded-full flex items-center justify-center transition-all duration-500 hover:scale-110 hover:bg-white hover:border-white shadow-xl"
+                         onMouseDown={playClick}
+                       >
+                          <Play className="w-6 h-6 md:w-8 md:h-8 fill-white text-white group-hover/play:fill-black group-hover/play:text-black transition-colors duration-300 ml-1" />
+                       </div>
+                       
+                       <span className="relative z-20 mt-4 font-mono-custom text-[10px] md:text-xs text-white uppercase tracking-widest opacity-0 group-hover/thumbnail:opacity-100 transition-opacity duration-500 transform translate-y-2 group-hover/thumbnail:translate-y-0 drop-shadow-md">
+                         Initialize Playback
+                       </span>
+                    </div>
+                  ) : (
+                    <>
+                      <iframe 
+                        loading="eager" 
+                        // @ts-ignore
+                        fetchPriority="high"
+                        title="Vimeo video player"
+                        src="https://player.vimeo.com/video/1141647818?autoplay=1&muted=0&quality=1080p&title=0&byline=0&portrait=0&badge=0&autopause=0&player_id=0&app_id=58479&controls=0&api=1"
+                        className="absolute inset-0 w-full h-full border-none z-10"
+                        allow="autoplay; fullscreen; picture-in-picture; clipboard-write"
+                      />
                       
-                      <p className="font-mono-custom text-sm md:text-base text-white uppercase tracking-wider leading-relaxed border-l-2 border-white pl-6 py-2">
-                        {CONTENT.aiPuli.description2}
-                      </p>
-                      
-                      <div className="pt-4">
-                        <a 
-                          href={CONTENT.aiPuli.link} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="inline-block cursor-hover"
-                          onMouseEnter={playHover}
-                          onMouseDown={playClick}
-                        >
-                          <div className="group/btn relative overflow-hidden bg-white text-black px-10 py-5 font-mono-custom text-sm uppercase tracking-widest hover:bg-neutral-200 transition-colors">
-                            <span className="relative z-10 flex items-center gap-2">
-                              {CONTENT.aiPuli.cta}
-                              <ArrowUpRight className="w-4 h-4 transform group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />
-                            </span>
-                            <div className="absolute bottom-0 left-0 w-full h-[3px] bg-black transform scale-x-0 group-hover/btn:scale-x-100 transition-transform duration-300 origin-left ease-expo"></div>
-                          </div>
-                        </a>
+                      {/* Custom Controls Overlay */}
+                      <div className="absolute bottom-0 left-0 w-full p-6 z-20 flex justify-between items-end bg-gradient-to-t from-black/80 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 no-global-unmute">
+                         {/* Play/Pause */}
+                         <button 
+                           onClick={toggleVideoPlay}
+                           className="text-white hover:text-gray-300 transition-colors p-2"
+                         >
+                           {isPlayerPaused ? <Play className="w-8 h-8 fill-white" /> : <Pause className="w-8 h-8 fill-white" />}
+                         </button>
+
+                         {/* Mute/Unmute */}
+                         <button 
+                            onClick={toggleVideoMute}
+                            className="text-white hover:text-gray-300 transition-colors p-2"
+                         >
+                            {isPlayerMuted ? <VolumeX className="w-8 h-8" /> : <Volume2 className="w-8 h-8" />}
+                         </button>
                       </div>
-                   </div>
+                    </>
+                  )}
                 </div>
-             </div>
+            </div>
           </ScrollReveal>
         </section>
 
